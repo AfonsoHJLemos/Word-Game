@@ -11,6 +11,7 @@
 #define RHYTHM 3
 #define DICTIONARY_SIZE 50
 #define WORD_SIZE 21
+#define MSG_SIZE 60
 
 // Registry Keys
 #define REGISTRY_KEY _T("Software\\TrabSO2")
@@ -24,7 +25,6 @@
 #define SHARED_MEM_NAME _T("WordGameSharedMemory")
 #define SHARED_MEM_SIZE 1024
 
-// Player structure
 typedef struct {
 	TCHAR username[USERNAME_SIZE];
 	int points;
@@ -33,7 +33,6 @@ typedef struct {
 	HANDLE pipe;
 } Player;
 
-// Shared Memory Structure
 typedef struct {
 	TCHAR letters[12];
 	int letterCount;
@@ -43,11 +42,14 @@ typedef struct {
 	BOOL isGameRunning;
 } SharedData;
 
-// Game state
 typedef struct {
 	int maxLetters;
 	int rhythm;
 	int leaderIndex;
 } GameState;
+
+typedef struct {
+	TCHAR text[MSG_SIZE];
+} Message;
 
 #endif // WORDGAME_H
