@@ -4,14 +4,13 @@
 #include <windows.h>
 
 // Constants
-#define BUFFER_SIZE 256
+#define PIPE_BUFFER_SIZE 256
 #define USERNAME_SIZE 21
 #define MAX_PLAYERS 20
 #define MAX_LETTERS 6
 #define RHYTHM 3
 #define DICTIONARY_SIZE 50
 #define WORD_SIZE 21
-#define MSG_SIZE 60
 
 // Registry Keys
 #define REGISTRY_KEY _T("Software\\TrabSO2")
@@ -20,6 +19,7 @@
 
 // Named Pipes
 #define PIPE_NAME _T("\\\\.\\pipe\\WordGame")
+#define PIPE_NAME1 _T("\\\\.\\pipe\\WordGame1")
 
 // Shared Memory
 #define SHARED_MEM_NAME _T("WordGameSharedMemory")
@@ -49,7 +49,8 @@ typedef struct {
 } GameState;
 
 typedef struct {
-	TCHAR text[MSG_SIZE];
+	TCHAR username[USERNAME_SIZE];
+	TCHAR text[WORD_SIZE];
 } Message;
 
 #endif // WORDGAME_H
