@@ -42,8 +42,11 @@ void WriteMessage(HANDLE hPipe, Message* msg) {
 }
 
 void ReadMessage(HANDLE hPipe, Message* msg) {
-	if (!ReadFile(hPipe, msg, sizeof(Message), NULL, NULL))
+	if (!ReadFile(hPipe, msg, sizeof(Message), NULL, NULL)) {
+		Sleep(10);
 		HandleError(_T("ReadFile"));
+	}
+
 	_tprintf_s(_T("[%s]: '%s'\n"), msg->username, msg->text);
 }
 
@@ -72,8 +75,6 @@ DWORD WINAPI InputToPlayerThread() {
 			exit(0);
 		}
 	}
-
-	return 0;
 }
 
 DWORD WINAPI PlayerListenerThread(Player* player) {
@@ -83,15 +84,13 @@ DWORD WINAPI PlayerListenerThread(Player* player) {
 	while (1) {
 		ReadMessage(player->pipe, &received);
 
-		if (_tcsicmp(received.text, _T("exit")) == 0)
+		if (_tcsicmp(received.text, _T("exit")) == 0) {
 			_tprintf_s(_T("%s Left\n"), received.username);
+			return 0;
+		}
 
 		HandlePlayerMessage(received, &sent);
-
-		WriteMessage(player->pipe, &sent);
 	}
-
-	return 0;
 }
 
 void ConnectPlayers() {
@@ -104,7 +103,7 @@ void ConnectPlayers() {
 			HandleError(_T("CreateNamedPipe"));
 
 		if (!(ConnectNamedPipe(hPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED)))
-			CloseHandle(hPipe);
+			HandleError(_T("ConnectNamedPipe"));
 
 		PlayerConnected(hPipe);
 
@@ -123,6 +122,7 @@ int _tmain(int argc, TCHAR* argv[]) {
 	_setmode(_fileno(stderr), _O_WTEXT);
 #endif
 
+	game.isRunning = TRUE;
 	_tprintf_s(_T("Server Opened!\n"));
 
 	// Input Thread

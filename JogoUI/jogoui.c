@@ -24,6 +24,9 @@ void UserValidation(int argc, LPTSTR argv[]) {
 
 	_tcsncpy_s(player.username, USERNAME_SIZE, argv[1], USERNAME_SIZE - 1);
 	player.username[USERNAME_SIZE - 1] = '\0';
+	player.points = 0;
+	player.isBot = FALSE;
+	player.pipe = INVALID_HANDLE_VALUE;
 }
 
 void Cleanup() {
@@ -72,8 +75,11 @@ void WriteMessage(Message* msg) {
 }
 
 void ReadMessage(Message* msg) {
-	if (!ReadFile(player.pipe, msg, sizeof(Message), NULL, NULL))
+	if (!ReadFile(player.pipe, msg, sizeof(Message), NULL, NULL)) {
+		Sleep(10);
 		HandleError(_T("ReadFile"));
+	}
+
 	_tprintf_s(_T("[%s]: '%s'\n"), msg->username, msg->text);
 }
 
@@ -93,8 +99,6 @@ DWORD WINAPI ServerListenerThread() {
 
 		HandleServerMessage(received);
 	}
-
-	return 0;
 }
 
 void InputToArbitro() {

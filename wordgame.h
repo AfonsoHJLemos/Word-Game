@@ -39,10 +39,10 @@ typedef struct {
 typedef struct {
 	Player players[MAX_PLAYERS];
 	int playerCount;
-	int terminate;
 	int maxLetters;
 	int rhythm;
 	int leaderIndex;
+	BOOL isRunning;
 } Game;
 
 typedef struct {
