@@ -4,7 +4,7 @@
 #include <windows.h>
 
 // Constants
-#define PIPE_BUFFER_SIZE 256
+#define PIPE_BUFFER_SIZE 2048
 #define USERNAME_SIZE 21
 #define MAX_PLAYERS 20
 #define MAX_LETTERS 6
@@ -19,7 +19,6 @@
 
 // Named Pipes
 #define PIPE_NAME _T("\\\\.\\pipe\\WordGame")
-#define PIPE_NAME1 _T("\\\\.\\pipe\\WordGame1")
 
 // Shared Memory
 #define SHARED_MEM_NAME _T("WordGameSharedMemory")
@@ -27,11 +26,24 @@
 
 typedef struct {
 	TCHAR username[USERNAME_SIZE];
+	TCHAR text[WORD_SIZE];
+} Message;
+
+typedef struct {
+	TCHAR username[USERNAME_SIZE];
 	int points;
 	BOOL isBot;
-	BOOL isActive;
 	HANDLE pipe;
 } Player;
+
+typedef struct {
+	Player players[MAX_PLAYERS];
+	int playerCount;
+	int terminate;
+	int maxLetters;
+	int rhythm;
+	int leaderIndex;
+} Game;
 
 typedef struct {
 	TCHAR letters[12];
@@ -41,16 +53,5 @@ typedef struct {
 	int playerCount;
 	BOOL isGameRunning;
 } SharedData;
-
-typedef struct {
-	int maxLetters;
-	int rhythm;
-	int leaderIndex;
-} GameState;
-
-typedef struct {
-	TCHAR username[USERNAME_SIZE];
-	TCHAR text[WORD_SIZE];
-} Message;
 
 #endif // WORDGAME_H

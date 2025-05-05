@@ -26,82 +26,69 @@ void UserValidation(int argc, LPTSTR argv[]) {
 	player.username[USERNAME_SIZE - 1] = '\0';
 }
 
-void ConnectToArbitro(HANDLE* hPipe) {
-	DWORD mode;
-	BOOL isSuccess;
-
-	while (1) {
-		_tprintf_s(_T("Creating File...\n"));
-		*hPipe = CreateFile(
-			PIPE_NAME, GENERIC_READ | GENERIC_WRITE,
-			FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-			OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-
-		if (*hPipe != INVALID_HANDLE_VALUE)
-			break;
-
-		if (GetLastError() != ERROR_PIPE_BUSY) {
-			_tprintf_s(_T("[ERROR] Creating File (%d)\n"), GetLastError());
-			exit(1);
-		}
-
-		_tprintf_s(_T("Waiting Pipe...\n"));
-		if (!WaitNamedPipe(PIPE_NAME, 30000)) {
-			_tprintf_s(_T("[ERROR] Waiting Pipe (%d)\n"), GetLastError());
-			exit(1);
-		}
-	}
-
-	mode = PIPE_READMODE_MESSAGE;
-	isSuccess = SetNamedPipeHandleState(*hPipe, &mode, NULL, NULL);
-	if (!isSuccess) {
-		_tprintf_s(_T("[ERROR] Setting Pipe Handle State (%d)\n"), GetLastError());
-		CloseHandle(*hPipe);
-		exit(1);
-	}
+void Cleanup() {
+	if (player.pipe != INVALID_HANDLE_VALUE)
+		CloseHandle(player.pipe);
 }
 
-DWORD WINAPI ServerHandlerThread() {
-	HANDLE hPipe;
-	TCHAR received[WORD_SIZE];
-	DWORD bytesReceived;
-	BOOL valid;
+void HandleError(TCHAR* msg) {
+	_tprintf_s(_T("[ERROR] %s (%d)\n"), msg, GetLastError());
+	Cleanup();
+	exit(1);
+}
 
-	_tprintf_s(_T("Waiting Pipe...\n"));
-	if (!WaitNamedPipe(PIPE_NAME1, NMPWAIT_WAIT_FOREVER)) {
-		_tprintf_s(_T("[ERROR] Waiting Pipe (%d)\n"), GetLastError());
-		exit(1);
-	}
+void ConnectToArbitro() {
+	_tprintf_s(_T("Waiting Server...\n"));
 
-	_tprintf_s(_T("Creating File...\n"));
-	hPipe = CreateFile(PIPE_NAME1, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hPipe == NULL) {
-		_tprintf_s(_T("[ERROR] Creating File (%d)\n"), GetLastError());
-		exit(1);
-	}
+	while (!WaitNamedPipe(PIPE_NAME, NMPWAIT_WAIT_FOREVER))
+		Sleep(1000);
 
-	_tprintf_s(_T("Connected To Server...\n"));
+	player.pipe = CreateFile(
+		PIPE_NAME, GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	if (player.pipe == INVALID_HANDLE_VALUE)
+		HandleError(_T("CreateFile"));
+
+	DWORD mode = PIPE_READMODE_MESSAGE;
+	if (!SetNamedPipeHandleState(player.pipe, &mode, NULL, NULL))
+		HandleError(_T("SetNamedPipeHandleState"));
+
+	_tprintf_s(_T("Connected, Welcome %s!\n"), player.username);
+}
+
+void WriteMessage(Message* msg) {
+	if (!WriteFile(player.pipe, msg, sizeof(Message), NULL, NULL))
+		HandleError(_T("WriteFile"));
+}
+
+void ReadMessage(Message* msg) {
+	if (!ReadFile(player.pipe, msg, sizeof(Message), NULL, NULL))
+		HandleError(_T("ReadFile"));
+	_tprintf_s(_T("[%s]: '%s'\n"), msg->username, msg->text);
+}
+
+void HandleServerMessage(Message msg) {}
+
+DWORD WINAPI ServerListenerThread() {
+	Message received;
+
 	while (1) {
-		valid = ReadFile(hPipe, received, sizeof(received) - sizeof(TCHAR), &bytesReceived, NULL);
-		received[bytesReceived / sizeof(TCHAR)] = '\0';
+		ReadMessage(&received);
 
-		if (!valid || !bytesReceived) {
-			_tprintf_s(_T("[ERROR] Reading File (%d)\n"), GetLastError());
-			break;
+		if (_tcsicmp(received.text, _T("exit")) == 0) {
+			_tprintf_s(_T("Server Closed The Game...\n"));
+			Cleanup();
+			exit(0);
 		}
 
-		_tprintf_s(_T("Received %d Bytes: \"%s\"\n"), bytesReceived, received);
+		HandleServerMessage(received);
 	}
 
-	CloseHandle(hPipe);
+	return 0;
 }
 
 int _tmain(int argc, TCHAR* argv[]) {
-	HANDLE hPipe;
-	Message sent, received;
-	DWORD bytesSent, bytesReceived;
-	BOOL isSuccess;
-
 #ifdef UNICODE
 	_setmode(_fileno(stdin), _O_WTEXT);
 	_setmode(_fileno(stdout), _O_WTEXT);
@@ -109,46 +96,30 @@ int _tmain(int argc, TCHAR* argv[]) {
 #endif
 
 	UserValidation(argc, argv);
-	ConnectToArbitro(&hPipe);
+	ConnectToArbitro();
 
-	HANDLE hServerThread = CreateThread(NULL, 0, ServerHandlerThread, NULL, 0, NULL);
-	if (hServerThread == NULL) {
-		_tprintf_s(_T("[ERROR] Creating Server Thread (%d)\n"), GetLastError());
-		exit(1);
-	}
+	// Server Listener Thread
+	HANDLE hThread = CreateThread(NULL, 0, ServerListenerThread, NULL, 0, NULL);
+	if (hThread == NULL)
+		HandleError(_T("CreateThread"));
+	else
+		CloseHandle(hThread);
+
+	Message sent, received;
+	_tcscpy_s(sent.username, USERNAME_SIZE, player.username);
 
 	while (1) {
-		// G E T - M E S S A G E
-		_tcscpy_s(sent.username, USERNAME_SIZE, player.username);
-		_tprintf(_T("Message (\"exit\" to leave): "));
 		_fgetts(sent.text, WORD_SIZE, stdin);
 		sent.text[_tcslen(sent.text) - 1] = '\0';
 
-		// W R I T E - F I L E
-		_tprintf_s(_T("Writing File...\n"));
-		isSuccess = WriteFile(hPipe, &sent, sizeof(Message), &bytesSent, NULL);
-		if (!isSuccess) {
-			_tprintf_s(_T("[ERROR] Writing File (%d)\n"), GetLastError());
-			break;
-		}
-		_tprintf_s(_T("Sent %d Bytes: \"%s\"\n"), bytesSent, sent.text);
+		WriteMessage(&sent);
 
-		// E X I T - C O N D I T I O N
-		if (_tcscmp(_T("exit"), sent.text) == 0)
-			break;
-
-		// R E A D - F I L E
-		_tprintf_s(_T("Reading File...\n"));
-		isSuccess = ReadFile(hPipe, &received, sizeof(Message), &bytesReceived, NULL);
-		if (!isSuccess) {
-			_tprintf_s(_T("[ERROR] Reading File (%d)\n"), GetLastError());
-			break;
+		if (_tcsicmp(sent.text, _T("exit")) == 0) {
+			_tprintf_s(_T("Exiting Game...\n"));
+			Cleanup();
+			exit(0);
 		}
-		_tprintf_s(_T("Received %d Bytes: \"%s\"\n"), bytesReceived, received.text);
 	}
 
-	_tprintf_s(_T("Player Exiting...\n"));
-
-	CloseHandle(hPipe);
 	return 0;
 }
