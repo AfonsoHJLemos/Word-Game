@@ -28,8 +28,17 @@ void PlayerConnected(HANDLE hPipe) {
 }
 
 void WriteMessage(HANDLE hPipe, Message* msg) {
-	if (!WriteFile(hPipe, msg, sizeof(Message), NULL, NULL))
-		HandleError(_T("WriteFile"));
+	OVERLAPPED overlapped = { 0 };
+	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+	if (!WriteFile(hPipe, msg, sizeof(Message), NULL, &overlapped)) {
+		if (GetLastError() != ERROR_IO_PENDING)
+			HandleError(_T("WriteFile"));
+
+		WaitForSingleObject(overlapped.hEvent, INFINITE);
+	}
+
+	CloseHandle(overlapped.hEvent);
 }
 
 void ReadMessage(HANDLE hPipe, Message* msg) {
@@ -46,7 +55,7 @@ void HandlePlayerMessage(Message received, Message* sent) {
 	sent->text[size] = '\0';
 }
 
-DWORD WINAPI ServerToPlayerThread() {
+DWORD WINAPI InputToPlayerThread() {
 	Message sent;
 	_tcscpy_s(sent.username, USERNAME_SIZE, _T("Server"));
 
@@ -85,24 +94,7 @@ DWORD WINAPI PlayerListenerThread(Player* player) {
 	return 0;
 }
 
-int _tmain(int argc, TCHAR* argv[]) {
-#ifdef UNICODE
-	_setmode(_fileno(stdin), _O_WTEXT);
-	_setmode(_fileno(stdout), _O_WTEXT);
-	_setmode(_fileno(stderr), _O_WTEXT);
-#endif
-
-	_tprintf_s(_T("Server Opened!\n"));
-
-	// Input Thread
-	HANDLE hThread = CreateThread(NULL, 0, ServerToPlayerThread, NULL, 0, NULL);
-	if (hThread == NULL)
-		HandleError(_T("CreateThread"));
-	else
-		CloseHandle(hThread);
-
-	DWORD threadId;
-
+void ConnectPlayers() {
 	while (1) {
 		HANDLE hPipe = CreateNamedPipe(
 			PIPE_NAME, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
@@ -116,12 +108,31 @@ int _tmain(int argc, TCHAR* argv[]) {
 
 		PlayerConnected(hPipe);
 
-		HANDLE hThread = CreateThread(NULL, 0, PlayerListenerThread, &game.players[game.playerCount - 1], 0, &threadId);
+		HANDLE hThread = CreateThread(NULL, 0, PlayerListenerThread, &game.players[game.playerCount - 1], 0, NULL);
 		if (hThread == NULL)
 			HandleError(_T("CreateThread"));
 		else
 			CloseHandle(hThread);
 	}
+}
+
+int _tmain(int argc, TCHAR* argv[]) {
+#ifdef UNICODE
+	_setmode(_fileno(stdin), _O_WTEXT);
+	_setmode(_fileno(stdout), _O_WTEXT);
+	_setmode(_fileno(stderr), _O_WTEXT);
+#endif
+
+	_tprintf_s(_T("Server Opened!\n"));
+
+	// Input Thread
+	HANDLE hThread = CreateThread(NULL, 0, InputToPlayerThread, NULL, 0, NULL);
+	if (hThread == NULL)
+		HandleError(_T("CreateThread"));
+	else
+		CloseHandle(hThread);
+
+	ConnectPlayers();
 
 	return 0;
 }
