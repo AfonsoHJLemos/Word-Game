@@ -1,6 +1,11 @@
 #ifndef WORDGAME_H
 #define WORDGAME_H
 
+#include <conio.h>
+#include <fcntl.h>
+#include <io.h>
+#include <stdio.h>
+#include <tchar.h>
 #include <windows.h>
 
 // Constants

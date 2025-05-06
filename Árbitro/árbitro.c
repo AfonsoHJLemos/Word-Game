@@ -1,9 +1,4 @@
 #include "../wordgame.h"
-#include <fcntl.h>
-#include <io.h>
-#include <stdio.h>
-#include <tchar.h>
-#include <windows.h>
 
 Game game;
 
@@ -20,11 +15,6 @@ void HandleError(TCHAR* msg) {
 	_tprintf_s(_T("[ERROR] %s (%d)\n"), msg, GetLastError());
 	Cleanup();
 	exit(1);
-}
-
-void PlayerConnected(HANDLE hPipe) {
-	game.players[game.playerCount].pipe = hPipe;
-	game.playerCount++;
 }
 
 void WriteMessage(HANDLE hPipe, Message* msg) {
@@ -46,16 +36,33 @@ void ReadMessage(HANDLE hPipe, Message* msg) {
 		Sleep(10);
 		HandleError(_T("ReadFile"));
 	}
-
-	_tprintf_s(_T("[%s]: '%s'\n"), msg->username, msg->text);
 }
 
-void HandlePlayerMessage(Message received, Message* sent) {
-	DWORD size = _tcslen(received.text);
+void PlayerConnected(HANDLE* hPipe, TCHAR* username) {
+	Player player;
 
-	for (int i = 0; i < size; i++)
-		sent->text[i] = _totupper(received.text[i]);
-	sent->text[size] = '\0';
+	_tcscpy_s(player.username, USERNAME_SIZE, username);
+	player.points = 0;
+	player.isBot = FALSE;
+	player.pipe = *hPipe;
+
+	game.players[game.playerCount] = player;
+	game.playerCount++;
+}
+
+void PlayerDisconnected(Player* player) {
+	for (int i = 0; i < game.playerCount; i++) {
+		if (_tcsicmp(game.players[i].username, player->username) == 0) {
+			_tcscpy_s(player->username, USERNAME_SIZE, _T(""));
+
+			FlushFileBuffers(player->pipe);
+			DisconnectNamedPipe(player->pipe);
+			CloseHandle(player->pipe);
+
+			game.playerCount--;
+			return;
+		}
+	}
 }
 
 DWORD WINAPI InputToPlayerThread() {
@@ -77,6 +84,14 @@ DWORD WINAPI InputToPlayerThread() {
 	}
 }
 
+void HandlePlayerMessage(Message received, Message* sent) {
+	DWORD size = _tcslen(received.text);
+
+	for (int i = 0; i < size; i++)
+		sent->text[i] = _totupper(received.text[i]);
+	sent->text[size] = '\0';
+}
+
 DWORD WINAPI PlayerListenerThread(Player* player) {
 	Message received, sent;
 	_tcscpy_s(sent.username, USERNAME_SIZE, _T("Server"));
@@ -85,12 +100,42 @@ DWORD WINAPI PlayerListenerThread(Player* player) {
 		ReadMessage(player->pipe, &received);
 
 		if (_tcsicmp(received.text, _T("exit")) == 0) {
-			_tprintf_s(_T("%s Left\n"), received.username);
+			_tprintf_s(_T("[%s] Left\n"), received.username);
+			PlayerDisconnected(player);
 			return 0;
 		}
 
 		HandlePlayerMessage(received, &sent);
 	}
+}
+
+BOOL PlayerExists(TCHAR* username) {
+	for (int i = 0; i < game.playerCount; i++)
+		if (_tcsicmp(game.players[i].username, username) == 0)
+			return TRUE;
+
+	return FALSE;
+}
+
+BOOL HandlePlayerRequest(HANDLE* hPipe, TCHAR* username) {
+	Message received, sent;
+	_tcscpy_s(sent.username, USERNAME_SIZE, _T("Server"));
+
+	ReadMessage(*hPipe, &received);
+	_tcscpy_s(username, USERNAME_SIZE, received.username);
+
+	if (PlayerExists(username)) {
+		_tcscpy_s(sent.text, USERNAME_SIZE, _T("occupied"));
+		WriteMessage(*hPipe, &received);
+
+		CloseHandle(*hPipe);
+		return FALSE;
+	}
+
+	_tcscpy_s(sent.text, USERNAME_SIZE, _T("accepted"));
+	WriteMessage(*hPipe, &sent);
+
+	return TRUE;
 }
 
 void ConnectPlayers() {
@@ -105,7 +150,12 @@ void ConnectPlayers() {
 		if (!(ConnectNamedPipe(hPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED)))
 			HandleError(_T("ConnectNamedPipe"));
 
-		PlayerConnected(hPipe);
+		TCHAR username[USERNAME_SIZE];
+		if (!HandlePlayerRequest(&hPipe, username))
+			continue;
+
+		_tprintf_s(_T("[%s] Joined\n"), username);
+		PlayerConnected(&hPipe, username);
 
 		HANDLE hThread = CreateThread(NULL, 0, PlayerListenerThread, &game.players[game.playerCount - 1], 0, NULL);
 		if (hThread == NULL)

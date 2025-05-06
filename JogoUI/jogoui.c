@@ -1,10 +1,4 @@
 #include "../wordgame.h"
-#include <conio.h>
-#include <fcntl.h>  
-#include <io.h>     
-#include <stdio.h>
-#include <tchar.h>
-#include <windows.h>
 
 Player player;
 
@@ -40,26 +34,6 @@ void HandleError(TCHAR* msg) {
 	exit(1);
 }
 
-void ConnectToArbitro() {
-	_tprintf_s(_T("Waiting Server...\n"));
-
-	while (!WaitNamedPipe(PIPE_NAME, NMPWAIT_WAIT_FOREVER))
-		Sleep(1000);
-
-	player.pipe = CreateFile(
-		PIPE_NAME, GENERIC_READ | GENERIC_WRITE,
-		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-		OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-	if (player.pipe == INVALID_HANDLE_VALUE)
-		HandleError(_T("CreateFile"));
-
-	DWORD mode = PIPE_READMODE_MESSAGE;
-	if (!SetNamedPipeHandleState(player.pipe, &mode, NULL, NULL))
-		HandleError(_T("SetNamedPipeHandleState"));
-
-	_tprintf_s(_T("Connected, Welcome %s!\n"), player.username);
-}
-
 void WriteMessage(Message* msg) {
     OVERLAPPED overlapped = {0};
     overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -81,6 +55,47 @@ void ReadMessage(Message* msg) {
 	}
 
 	_tprintf_s(_T("[%s]: '%s'\n"), msg->username, msg->text);
+}
+
+BOOL HandleServerRequest() {
+	Message sent, received;
+	_tcscpy_s(sent.username, USERNAME_SIZE, player.username);
+	_tcscpy_s(sent.text, WORD_SIZE, _T("join"));
+
+	WriteMessage(&sent);
+
+	ReadMessage(&received);
+
+	if (_tcsicmp(received.text, _T("accepted")) != 0)
+		return FALSE;
+
+	return TRUE;
+}
+
+void ConnectToArbitro() {
+	_tprintf_s(_T("Waiting Server...\n"));
+
+	while (!WaitNamedPipe(PIPE_NAME, NMPWAIT_WAIT_FOREVER))
+		Sleep(1000);
+
+	player.pipe = CreateFile(
+		PIPE_NAME, GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	if (player.pipe == INVALID_HANDLE_VALUE)
+		HandleError(_T("CreateFile"));
+
+	DWORD mode = PIPE_READMODE_MESSAGE;
+	if (!SetNamedPipeHandleState(player.pipe, &mode, NULL, NULL))
+		HandleError(_T("SetNamedPipeHandleState"));
+
+	if (!HandleServerRequest()) {
+		_tprintf_s(_T("Server Denied Your Request...\n"));
+		Cleanup();
+		exit(0);
+	}
+
+	_tprintf_s(_T("Connected, Welcome %s!\n"), player.username);
 }
 
 void HandleServerMessage(Message msg) {}
