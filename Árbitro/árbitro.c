@@ -20,6 +20,10 @@ void HandleError(TCHAR* msg) {
 void WriteMessage(HANDLE hPipe, Message* msg) {
 	OVERLAPPED overlapped = { 0 };
 	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	/*
+	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	ConnectNamedPipe(hPipe, &overlapped);
+	*/
 
 	if (!WriteFile(hPipe, msg, sizeof(Message), NULL, &overlapped)) {
 		if (GetLastError() != ERROR_IO_PENDING)
@@ -104,6 +108,8 @@ DWORD WINAPI PlayerListenerThread(Player* player) {
 			PlayerDisconnected(player);
 			return 0;
 		}
+
+		_tprintf_s(_T("[%s]: '%s'\n"), received.username, received.text);
 
 		HandlePlayerMessage(received, &sent);
 	}

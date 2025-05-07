@@ -35,17 +35,21 @@ void HandleError(TCHAR* msg) {
 }
 
 void WriteMessage(Message* msg) {
-    OVERLAPPED overlapped = {0};
-    overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	OVERLAPPED overlapped = { 0 };
+	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	/*
+	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	ConnectNamedPipe(hPipe, &overlapped);
+	*/
 
-    if (!WriteFile(player.pipe, msg, sizeof(Message), NULL, &overlapped)) {
-        if (GetLastError() != ERROR_IO_PENDING)
-            HandleError(_T("WriteFile"));
-     
-        WaitForSingleObject(overlapped.hEvent, INFINITE);
-    }
+	if (!WriteFile(player.pipe, msg, sizeof(Message), NULL, &overlapped)) {
+		if (GetLastError() != ERROR_IO_PENDING)
+			HandleError(_T("WriteFile"));
 
-    CloseHandle(overlapped.hEvent);
+		WaitForSingleObject(overlapped.hEvent, INFINITE);
+	}
+
+	CloseHandle(overlapped.hEvent);
 }
 
 void ReadMessage(Message* msg) {
@@ -53,8 +57,6 @@ void ReadMessage(Message* msg) {
 		Sleep(10);
 		HandleError(_T("ReadFile"));
 	}
-
-	_tprintf_s(_T("[%s]: '%s'\n"), msg->username, msg->text);
 }
 
 BOOL HandleServerRequest() {
@@ -112,6 +114,7 @@ DWORD WINAPI ServerListenerThread() {
 			exit(0);
 		}
 
+		_tprintf_s(_T("[%s]: '%s'\n"), received.username, received.text);
 		HandleServerMessage(received);
 	}
 }
